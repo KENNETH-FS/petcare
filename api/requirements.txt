@@ -1,0 +1,22 @@
+# web framework
+fastapi[standard]
+
+# database
+
+# sql toolkit and ORM for python
+sqlalchemy>=2.0
+
+# postgreSQL database adapter for python
+psycopg[binary]
+
+
+# migrations and settings
+
+# migration tool used in python used alongside with sqlalchemy
+alembic
+
+# handles app config and env variables using type hints.
+pydantic-settings
+
+# library that reads key-value pairs from .env
+python-dotenv
