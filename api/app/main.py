@@ -1,13 +1,17 @@
 from fastapi import FastAPI
 
 from app.deps import CurrentUser
-from app.errors import NotFoundError
 from app.exception_handlers import register_exception_handlers
+from app.routers import appointments, clinics, pets
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="PetCare API", version="0.1.0")
     register_exception_handlers(app)
+
+    app.include_router(appointments.router)
+    app.include_router(clinics.router)
+    app.include_router(pets.router)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -20,14 +24,6 @@ def create_app() -> FastAPI:
             "email": current_user.email,
             "role": current_user.role,
         }
-
-    @app.get("/boom-404")
-    def boom_404():
-        raise NotFoundError("Test.", code="TEST_404")
-
-    @app.get("/boom-500")
-    def boom_500():
-        return 1 / 0
 
     return app
 
