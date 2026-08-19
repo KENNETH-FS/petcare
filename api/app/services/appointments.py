@@ -10,6 +10,7 @@ from app.schemas.appointments import (
     AppointmentStatus,
     AppointmentUpdate,
 )
+from app.services.slots import invalidate_slots
 
 # Legal status transitions. Anything not listed here is rejected.
 _ALLOWED_TRANSITIONS: dict[str, set[str]] = {
@@ -37,7 +38,6 @@ def _has_overlap(
     (btree_gist on (pet_id, tsrange(start_time, end_time))). Until that exists,
     treat this as best-effort.
     """
-    # Treat an open-ended appointment as occupying a one-hour slot.
     effective_end = end_time or start_time
 
     stmt = select(Appointment.id).where(
@@ -55,6 +55,7 @@ def _has_overlap(
 def get_appointment(
     db: Session, appointment_id: int, current_user: User
 ) -> Appointment:
+    """Return the appointment if the current user owns its pet, else raise."""
     appointment = db.get(Appointment, appointment_id)
     if appointment is None:
         raise NotFoundError("Appointment not found.", code="APPOINTMENT_NOT_FOUND")
@@ -93,8 +94,8 @@ def get_all_clinic_appointment(
     IMPORTANT: this raises 403 rather than 404 when the caller is not the owner.
     That is the opposite of get_appointment above, and it is deliberate: clinics
     are publicly readable, so their existence is already known and a 403 leaks
-    nothing. Appointments are private, so there not-yours must be
-    indistinguishable from not-found.
+    nothing. Appointments are private, so not-yours must be indistinguishable
+    from not-found.
     """
     clinic = db.get(Clinic, clinic_id)
     if clinic is None:
@@ -154,6 +155,10 @@ def create_appointment(
     db.add(appointment)
     db.commit()
     db.refresh(appointment)
+
+    # Booking removes a slot from that clinic's available list for that day.
+    invalidate_slots(appointment.clinic_id, appointment.start_time.date())
+
     return appointment
 
 
@@ -173,9 +178,6 @@ def update_appointment(
             code="APPOINTMENT_IN_PAST",
         )
 
-    # IMPORTANT: exclude_unset distinguishes "field omitted" from "field
-    # explicitly set to null". Without it every omitted field becomes None and
-    # you silently wipe data the client never mentioned.
     changes = data.model_dump(exclude_unset=True)
 
     new_start = changes.get("start_time", appointment.start_time)
@@ -200,11 +202,23 @@ def update_appointment(
                 code="APPOINTMENT_OVERLAP",
             )
 
+    # Snapshot the pre-update date BEFORE mutating start_time below — this is
+    # the only chance to know which day's cache also needs invalidating if
+    # the appointment moved to a different day.
+    old_date = appointment.start_time.date()
+    clinic_id = appointment.clinic_id
+
     for field, value in changes.items():
         setattr(appointment, field, value)
 
     db.commit()
     db.refresh(appointment)
+
+    new_date = appointment.start_time.date()
+    invalidate_slots(clinic_id, new_date)
+    if new_date != old_date:
+        invalidate_slots(clinic_id, old_date)
+
     return appointment
 
 
@@ -224,4 +238,10 @@ def change_appointment_status(
     appointment.status = target
     db.commit()
     db.refresh(appointment)
+
+    # Cancelling frees the slot; completing doesn't change availability, but
+    # invalidating on every status change is simpler to reason about and
+    # verify than special-casing which transitions matter.
+    invalidate_slots(appointment.clinic_id, appointment.start_time.date())
+
     return appointment

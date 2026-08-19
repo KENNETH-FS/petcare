@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     database_url: str
     app_env: str = "dev"
     test_database_url: str | None = None
+    redis_url: str
 
 
 @lru_cache
