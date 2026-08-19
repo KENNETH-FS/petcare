@@ -5,7 +5,7 @@ from app.deps import CurrentUser, DbSession
 from app.exception_handlers import register_exception_handlers
 from app.logging_config import configure_logging
 from app.middleware import RequestIdMiddleware
-from app.routers import appointments, clinics, pets
+from app.routers import admin, appointments, clinics, pets
 
 configure_logging()
 
@@ -18,6 +18,7 @@ def create_app() -> FastAPI:
     app.include_router(appointments.router)
     app.include_router(clinics.router)
     app.include_router(pets.router)
+    app.include_router(admin.router)
 
     @app.get("/health")
     def health(db: DbSession, response: Response) -> dict[str, str]:

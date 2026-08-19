@@ -106,3 +106,16 @@ def invalidate_slots(clinic_id: int, on_date: date) -> None:
         "slots_cache_invalidated",
         extra={"clinic_id": clinic_id, "date": on_date.isoformat()},
     )
+
+
+def get_cache_stats() -> dict[str, int | float]:
+    """Snapshot of this process's hit/miss counters.
+
+    IMPORTANT: these are plain module-level globals — correct for a single
+    dev-server process, but NOT shared across multiple Uvicorn workers or
+    instances. A multi-worker deployment would need these as Redis INCR
+    counters instead, so every worker contributes to one true total.
+    """
+    total = _HITS + _MISSES
+    hit_rate = round(_HITS / total, 4) if total else 0.0
+    return {"hits": _HITS, "misses": _MISSES, "total": total, "hit_rate": hit_rate}
